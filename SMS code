@@ -1,0 +1,79 @@
+import pandas as pd
+import re
+from twilio.rest import Client
+import numpy as np
+
+# Função para formatar o número de telefone
+def formatar_telefone(telefone):
+    # Remove todos os caracteres não numéricos
+    telefone = re.sub(r'\D', '', telefone)
+
+    # Verifica se o número tem o tamanho esperado para o Brasil (11 dígitos após o código do país)
+    if len(telefone) == 11:
+        return f"+55{telefone}"
+    else:
+        # Se o número não for válido, retorna um erro
+        raise ValueError(f"Número de telefone inválido: {telefone}")
+
+# Função para enviar SMS via Twilio
+def enviar_sms(nome_cliente, telefone_cliente, enviados):
+    account_sid = " "
+    auth_token = " "
+    numero_twilio = " "  
+
+    client = Client(account_sid, auth_token)
+    
+    # Link de feedback das clientes
+    link = "https://forms..."
+    
+    # Corpo da mensagem com o link
+    mensagem_body = f"EMPRESA: {nome_cliente}, agradecemos sua compra! Queremos saber como foi a experiencia. Clique aqui e conte sua  experiência: {link}"
+
+    # Verifica se o número já foi enviado
+    if telefone_cliente not in enviados:
+        try:
+            # Enviar a mensagem
+            mensagem = client.messages.create(
+                from_=numero_twilio,
+                to=telefone_cliente,
+                body=mensagem_body
+            )
+            enviados.add(telefone_cliente)  # Adiciona o número ao conjunto de enviados
+            print(f"Mensagem enviada para {nome_cliente}: {mensagem.body}")
+            return mensagem.sid
+        except Exception as e:
+            print(f"Erro ao enviar SMS para {nome_cliente} ({telefone_cliente}): {e}")
+    else:
+        print(f"Já enviei SMS para {nome_cliente} ({telefone_cliente}), pulando...")
+        return None
+
+# Conjunto para armazenar números de telefone já enviados
+enviados = set()
+quantidade_enviados = 0  # Contador de quantos SMS foram enviados
+
+# Carregar a planilha Excel
+arquivo_excel = r"seu caminho"
+df = pd.read_excel(arquivo_excel)
+
+# Filtrar apenas as colunas "Consumidor" e "tel_celular"
+df = df[["Consumidor", "tel_celular"]]
+
+# Limpeza dos dados para remover linhas vazias ou inválidas
+df = df.dropna(subset=["Consumidor", "tel_celular"])  # Remove linhas onde o nome ou telefone são NaN
+df = df[df["tel_celular"].astype(str).str.match(r'^\(?\d{2}\)?\s?\d{4,5}-?\d{4}$')]  # Filtro para garantir formato de telefone
+
+# Iterar sobre cada linha da planilha
+for index, row in df.iterrows():
+    nome_cliente = row["Consumidor"]
+    telefone_cliente = row["tel_celular"]
+    
+    # Verificar se o telefone é válido
+    try:
+        telefone_formatado = formatar_telefone(str(telefone_cliente))  # Formata o número
+        if enviar_sms(nome_cliente, telefone_formatado, enviados):
+            quantidade_enviados += 1  # Incrementa a quantidade de SMS enviados
+    except ValueError as e:
+        print(f"Erro de formatação para {nome_cliente}: {e}")
+    
+# Exibir a quantidade de SMS enviados no final
+print(f"Total de SMS enviados: {quantidade_enviados}")
